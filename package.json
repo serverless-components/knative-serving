@@ -1,7 +1,7 @@
 {
   "name": "@serverless/knative-serving",
   "version": "0.1.0",
-  "main": "./serverless.js",
+  "main": "./src/serverless.js",
   "publishConfig": {
     "access": "public"
   },
@@ -12,16 +12,17 @@
   "author": "Serverless, Inc.",
   "license": "Apache",
   "dependencies": {
-    "@kubernetes/client-node": "^0.11.0",
-    "@serverless/core": "^1.1.1",
+    "@kubernetes/client-node": "^0.11.1",
+    "@serverless/core": "^1.1.2",
     "ramda": "^0.26.1"
   },
   "devDependencies": {
     "babel-eslint": "^9.0.0",
     "eslint": "^5.6.0",
-    "eslint-config-prettier": "^6.4.0",
-    "eslint-plugin-import": "^2.18.2",
-    "eslint-plugin-prettier": "^3.1.1",
-    "prettier": "^1.18.2"
+    "eslint-config-prettier": "^6.10.0",
+    "eslint-plugin-import": "^2.20.1",
+    "eslint-plugin-prettier": "^3.1.2",
+    "prettier": "^1.19.1",
+    "serverless": "^1.67.0"
   }
 }

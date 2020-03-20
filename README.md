@@ -31,18 +31,21 @@ Make sure that you have generated your [`Kubeconfig` file](https://rancher.com/d
 
 ```yml
 # serverless.yml
+org: acme
+app: todo
+name: todo-knative-serving
 
-myKnativeService:
-  component: '@serverless/knative-serving'
-  inputs:
-    kubeConfigPath: ../kubeconfig # default is `~/.kube/config`
-    knativeGroup: serving.knative.dev # default is `serving.knative.dev`
-    knativeVersion: v1alpha1 # default is `v1alpha1`
-    registryAddress: 'https://container-registry.acme.com' # default is `'https://index.docker.io/v1'`
-    namespace: 'default' # default is `'default'`
-    name: my-knative-service
-    repository: acme/some-func
-    tag: latest
+component: knative-serving@dev
+
+inputs:
+  kubeConfigPath: ../kubeconfig # default is `~/.kube/config`
+  knativeGroup: serving.knative.dev # default is `serving.knative.dev`
+  knativeVersion: v1alpha1 # default is `v1alpha1`
+  registryAddress: 'https://container-registry.acme.com' # default is `'https://index.docker.io/v1'`
+  namespace: 'default' # default is `'default'`
+  name: my-knative-service
+  repository: acme/some-func
+  tag: latest
 ```
 
 ### 4. Deploy

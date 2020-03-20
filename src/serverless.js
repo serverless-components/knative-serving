@@ -12,7 +12,7 @@ const defaults = {
 }
 
 class KnativeServing extends Component {
-  async default(inputs = {}) {
+  async deploy(inputs = {}) {
     const config = mergeDeepRight(defaults, inputs)
 
     const k8sCore = this.getKubernetesClient(config.kubeConfigPath, kubernetes.CoreV1Api)
@@ -40,7 +40,6 @@ class KnativeServing extends Component {
     config.istioIngressIp = ip
 
     this.state = config
-    await this.save()
     return this.state
   }
 
@@ -58,7 +57,6 @@ class KnativeServing extends Component {
     await this.deleteService(k8sCustom, params)
 
     this.state = {}
-    await this.save()
     return {}
   }
 
@@ -74,7 +72,6 @@ class KnativeServing extends Component {
     config.istioIngressIp = ip
 
     this.state = config
-    await this.save()
     return this.state
   }
 
@@ -89,7 +86,7 @@ class KnativeServing extends Component {
       // ready the istio-ingressgateway service or if that service
       // does not exist, as is the case for some Knative installations
       if (statusCode === 403 || statusCode === 404) {
-        return ""
+        return ''
       }
       throw error
     }
