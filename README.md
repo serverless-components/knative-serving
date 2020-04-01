@@ -25,7 +25,21 @@ Just create a `serverless.yml` file
 $ touch serverless.yml
 ```
 
-Make sure that you have generated your [`Kubeconfig` file](https://rancher.com/docs/rancher/v2.x/en/cluster-admin/kubeconfig/) via `kubectl`.
+Then create a `.env` file
+
+```console
+$ touch .env
+```
+
+Update the `.env` file with information about your Kubernetes setup
+
+```
+# .env
+KUBERNETES_ENDPOINT=https://cluster.example.com
+KUBERNETES_PORT=6443
+KUBERNETES_SERVICE_ACCOUNT_TOKEN=xxxx
+KUBERNETES_SKIP_TLS_VERIFY=false
+```
 
 ### 3. Configure
 
@@ -38,7 +52,6 @@ name: todo-knative-serving
 component: knative-serving@dev
 
 inputs:
-  kubeConfigPath: ../kubeconfig # default is `~/.kube/config`
   knativeGroup: serving.knative.dev # default is `serving.knative.dev`
   knativeVersion: v1alpha1 # default is `v1alpha1`
   registryAddress: 'https://container-registry.acme.com' # default is `'https://index.docker.io/v1'`

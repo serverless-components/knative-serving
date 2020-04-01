@@ -11,11 +11,6 @@
   },
   "author": "Serverless, Inc.",
   "license": "Apache",
-  "dependencies": {
-    "@kubernetes/client-node": "^0.11.1",
-    "@serverless/core": "^1.1.2",
-    "ramda": "^0.26.1"
-  },
   "devDependencies": {
     "babel-eslint": "^9.0.0",
     "eslint": "^5.6.0",

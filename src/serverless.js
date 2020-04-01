@@ -1,10 +1,7 @@
-const path = require('path')
-const { isEmpty, mergeDeepRight } = require('ramda')
 const kubernetes = require('@kubernetes/client-node')
 const { Component } = require('@serverless/core')
 
 const defaults = {
-  kubeConfigPath: path.join(process.env.HOME, '.kube', 'config'),
   knativeGroup: 'serving.knative.dev',
   knativeVersion: 'v1alpha1',
   registryAddress: 'docker.io',
@@ -13,10 +10,12 @@ const defaults = {
 
 class KnativeServing extends Component {
   async deploy(inputs = {}) {
-    const config = mergeDeepRight(defaults, inputs)
+    const config = {
+      ...defaults,
+      ...inputs
+    }
 
-    const k8sCore = this.getKubernetesClient(config.kubeConfigPath, kubernetes.CoreV1Api)
-    const k8sCustom = this.getKubernetesClient(config.kubeConfigPath, kubernetes.CustomObjectsApi)
+    const k8sCustom = this.getKubernetesClient(kubernetes.CustomObjectsApi)
 
     let serviceExists = true
     try {
@@ -36,20 +35,19 @@ class KnativeServing extends Component {
 
     const serviceUrl = await this.getServiceUrl(k8sCustom, config)
     config.serviceUrl = serviceUrl
-    const ip = await this.getIstioIngressIp(k8sCore)
-    config.istioIngressIp = ip
 
     this.state = config
     return this.state
   }
 
   async remove(inputs = {}) {
-    let config = mergeDeepRight(defaults, inputs)
-    if (isEmpty(config)) {
-      config = this.state
+    const config = {
+      ...defaults,
+      ...inputs,
+      ...this.state
     }
 
-    const k8sCustom = this.getKubernetesClient(config.kubeConfigPath, kubernetes.CustomObjectsApi)
+    const k8sCustom = this.getKubernetesClient(kubernetes.CustomObjectsApi)
 
     let params = Object.assign({}, config)
     const manifest = this.getManifest(params)
@@ -60,56 +58,43 @@ class KnativeServing extends Component {
     return {}
   }
 
-  async info(inputs = {}) {
-    const config = mergeDeepRight(defaults, inputs)
-
-    const k8sCore = this.getKubernetesClient(config.kubeConfigPath, kubernetes.CoreV1Api)
-    const k8sCustom = this.getKubernetesClient(config.kubeConfigPath, kubernetes.CustomObjectsApi)
-
-    const serviceUrls = await this.getServiceUrls(k8sCustom, config)
-    config.serviceUrls = serviceUrls
-    const ip = await this.getIstioIngressIp(k8sCore)
-    config.istioIngressIp = ip
-
-    this.state = config
-    return this.state
-  }
-
   // "private" methods
-  async getIstioIngressIp(k8s) {
-    try {
-      const res = await k8s.readNamespacedService('istio-ingressgateway', 'istio-system')
-      return res.body.status.loadBalancer.ingress[0].ip
-    } catch (error) {
-      const statusCode = error.response.body.code
-      // Return an empty IP if the user doesn't have permission to
-      // ready the istio-ingressgateway service or if that service
-      // does not exist, as is the case for some Knative installations
-      if (statusCode === 403 || statusCode === 404) {
-        return ''
-      }
-      throw error
-    }
-  }
-
   async getServiceUrl(k8s, config) {
-    const service = await this.getService(k8s, config)
-    return service.body.status.url
+    let url
+    do {
+      const service = await this.getService(k8s, config)
+      if (service.body.status && service.body.status.url) {
+        url = service.body.status.url // eslint-disable-line prefer-destructuring
+      }
+      await new Promise((resolve) => setTimeout(() => resolve()), 2000)
+    } while (!url)
+    return url
   }
 
-  async getServiceUrls(k8s, config) {
-    const services = await this.listServices(k8s, config)
-    return services.body.items.reduce((obj, service) => {
-      obj[service.metadata.name] = service.status.url
-      return obj
-    }, {})
-  }
-
-  getKubernetesClient(configPath, type) {
-    let kc = new kubernetes.KubeConfig()
-    kc.loadFromFile(configPath)
-    kc = kc.makeApiClient(type)
-    return kc
+  getKubernetesClient(type) {
+    const { endpoint, port } = this.credentials.kubernetes
+    const token = this.credentials.kubernetes.serviceAccountToken
+    const skipTLSVerify = this.credentials.kubernetes.skipTlsVerify == 'true'
+    const kc = new kubernetes.KubeConfig()
+    kc.loadFromOptions({
+      clusters: [
+        {
+          name: 'cluster',
+          skipTLSVerify,
+          server: `${endpoint}:${port}`
+        }
+      ],
+      users: [{ name: 'user', token }],
+      contexts: [
+        {
+          name: 'context',
+          user: 'user',
+          cluster: 'cluster'
+        }
+      ],
+      currentContext: 'context'
+    })
+    return kc.makeApiClient(type)
   }
 
   getManifest({ knativeGroup, knativeVersion, name, namespace, registryAddress, repository, tag }) {
