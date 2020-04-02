@@ -66,7 +66,7 @@ class KnativeServing extends Component {
       if (service.body.status && service.body.status.url) {
         url = service.body.status.url // eslint-disable-line prefer-destructuring
       }
-      await new Promise((resolve) => setTimeout(() => resolve()), 2000)
+      await new Promise((resolve) => setTimeout(() => resolve(), 2000))
     } while (!url)
     return url
   }
