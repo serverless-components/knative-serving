@@ -7,7 +7,8 @@
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "lint": "eslint . --fix --cache"
+    "lint": "eslint . --fix --cache",
+    "postinstall": "npm install -C src"
   },
   "author": "Serverless, Inc.",
   "license": "Apache",
