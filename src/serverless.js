@@ -97,7 +97,18 @@ class KnativeServing extends Component {
     return kc.makeApiClient(type)
   }
 
-  getManifest({ knativeGroup, knativeVersion, name, namespace, registryAddress, repository, tag }) {
+  getManifest({ knativeGroup, knativeVersion, name, namespace, registryAddress, repository, tag, digest, pullPolicy }) {
+    const imageConfig = {}
+    if (digest) {
+      imageConfig.image = `${registryAddress}/${repository}@${digest}`
+    } else if (tag) {
+      imageConfig.image = `${registryAddress}/${repository}:${tag}`
+    } else {
+      imageConfig.image = `${registryAddress}/${repository}:latest`
+    }
+    if (pullPolicy) {
+      imageConfig.imagePullPolicy = pullPolicy
+    }
     return {
       apiVersion: `${knativeGroup}/${knativeVersion}`,
       kind: 'Service',
@@ -109,9 +120,7 @@ class KnativeServing extends Component {
         template: {
           spec: {
             containers: [
-              {
-                image: `${registryAddress}/${repository}:${tag}`
-              }
+              imageConfig
             ]
           }
         }
