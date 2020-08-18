@@ -21,6 +21,7 @@ class KnativeServing extends Component {
     try {
       await this.getService(k8sCustom, config)
     } catch (error) {
+      console.dir(error)
       serviceExists = error.body.code === 404 ? false : true
     }
 
