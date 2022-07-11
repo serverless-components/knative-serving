@@ -1,21 +1,21 @@
+const path = require('path')
+const { isEmpty, mergeDeepRight } = require('ramda')
 const kubernetes = require('@kubernetes/client-node')
 const { Component } = require('@serverless/core')
 
 const defaults = {
+  kubeConfigPath: path.join(process.env.HOME, '.kube', 'config'),
   knativeGroup: 'serving.knative.dev',
-  knativeVersion: 'v1alpha1',
+  knativeVersion: 'v1',
   registryAddress: 'docker.io',
   namespace: 'default'
 }
 
 class KnativeServing extends Component {
-  async deploy(inputs = {}) {
-    const config = {
-      ...defaults,
-      ...inputs
-    }
+  async default(inputs = {}) {
+    const config = mergeDeepRight(defaults, inputs)
 
-    const k8sCustom = this.getKubernetesClient(kubernetes.CustomObjectsApi)
+    const k8sCustom = this.getKubernetesClient(config.kubeConfigPath, kubernetes.CustomObjectsApi)
 
     let serviceExists = true
     try {
@@ -41,13 +41,12 @@ class KnativeServing extends Component {
   }
 
   async remove(inputs = {}) {
-    const config = {
-      ...defaults,
-      ...inputs,
-      ...this.state
+    let config = mergeDeepRight(defaults, inputs)
+    if (isEmpty(config)) {
+      config = this.state
     }
 
-    const k8sCustom = this.getKubernetesClient(kubernetes.CustomObjectsApi)
+    const k8sCustom = this.getKubernetesClient(config.kubeConfigPath, kubernetes.CustomObjectsApi)
 
     let params = Object.assign({}, config)
     const manifest = this.getManifest(params)
@@ -55,7 +54,20 @@ class KnativeServing extends Component {
     await this.deleteService(k8sCustom, params)
 
     this.state = {}
+    await this.save()
     return {}
+  }
+
+  async info(inputs = {}) {
+    const config = mergeDeepRight(defaults, inputs)
+
+    const k8sCustom = this.getKubernetesClient(config.kubeConfigPath, kubernetes.CustomObjectsApi)
+    const serviceUrls = await this.getServiceUrls(k8sCustom, config)
+    config.serviceUrls = serviceUrls
+
+    this.state = config
+    await this.save()
+    return this.state
   }
 
   // "private" methods
@@ -71,30 +83,27 @@ class KnativeServing extends Component {
     return url
   }
 
-  getKubernetesClient(type) {
-    const { endpoint, port } = this.credentials.kubernetes
-    const token = this.credentials.kubernetes.serviceAccountToken
-    const skipTLSVerify = this.credentials.kubernetes.skipTlsVerify == 'true'
-    const kc = new kubernetes.KubeConfig()
-    kc.loadFromOptions({
-      clusters: [
-        {
-          name: 'cluster',
-          skipTLSVerify,
-          server: `${endpoint}:${port}`
-        }
-      ],
-      users: [{ name: 'user', token }],
-      contexts: [
-        {
-          name: 'context',
-          user: 'user',
-          cluster: 'cluster'
-        }
-      ],
-      currentContext: 'context'
-    })
-    return kc.makeApiClient(type)
+  async getServiceUrls(k8s, config) {
+    let urls = new Map()
+    do {
+      const services = await this.listServices(k8s, config)
+      if (services.response.statusCode == 200 && services.body.items) {
+        services.body.items.forEach( s => {
+          const serviceName = s.metadata.name
+          const serviceUrl = s.status.url
+          urls.set(serviceName, serviceUrl)
+        })
+      }
+      await new Promise((resolve) => setTimeout(() => resolve(), 2000))
+    } while (!urls)
+    return urls
+  }
+
+  getKubernetesClient(configPath, type) {
+    let kc = new kubernetes.KubeConfig()
+    kc.loadFromFile(configPath)
+    kc = kc.makeApiClient(type)
+    return kc
   }
 
   getManifest(svc) {
