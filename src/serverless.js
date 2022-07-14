@@ -15,6 +15,7 @@ class KnativeServing extends Component {
   async default(inputs = {}) {
     const config = mergeDeepRight(defaults, inputs)
 
+    const k8sCore = this.getKubernetesClient(config.kubeConfigPath, kubernetes.CoreV1Api)
     const k8sCustom = this.getKubernetesClient(config.kubeConfigPath, kubernetes.CustomObjectsApi)
 
     let serviceExists = true
@@ -35,6 +36,9 @@ class KnativeServing extends Component {
 
     const serviceUrl = await this.getServiceUrl(k8sCustom, config)
     config.serviceUrl = serviceUrl
+
+    const istioIngressIp = await this.getIstioIngressIp(k8sCore)
+    config.istioIngressIp = istioIngressIp
 
     this.state = config
     return this.state
@@ -61,9 +65,13 @@ class KnativeServing extends Component {
   async info(inputs = {}) {
     const config = mergeDeepRight(defaults, inputs)
 
+    const k8sCore = this.getKubernetesClient(config.kubeConfigPath, kubernetes.CoreV1Api)
     const k8sCustom = this.getKubernetesClient(config.kubeConfigPath, kubernetes.CustomObjectsApi)
     const serviceUrls = await this.getServiceUrls(k8sCustom, config)
     config.serviceUrls = serviceUrls
+
+    const istioIngressIp = await this.getIstioIngressIp(k8sCore)
+    config.istioIngressIp = istioIngressIp
 
     this.state = config
     await this.save()
@@ -71,6 +79,13 @@ class KnativeServing extends Component {
   }
 
   // "private" methods
+  async getIstioIngressIp(k8s) {
+    const res = await k8s.readNamespacedService('istio-ingressgateway', 'istio-system')
+    if (res.body && res.body.status.loadBalancer && res.body.status.loadBalancer.ingress) {
+      return res.body.status.loadBalancer.ingress[0].ip
+    }
+  }
+
   async getServiceUrl(k8s, config) {
     let url
     do {
