@@ -133,6 +133,14 @@ class KnativeServing extends Component {
     if (svc.pullPolicy) {
       imageConfig.imagePullPolicy = svc.pullPolicy
     }
+
+    const annotations = {}
+    if (svc.autoscaler) {
+      for (const key in svc.autoscaler) {
+        const value = (typeof svc.autoscaler[key] == 'number') ? svc.autoscaler[key].toString() : svc.autoscaler[key]
+        annotations[`autoscaling.knative.dev/${key}`] = value
+      }
+    }
     return {
       apiVersion: `${svc.knativeGroup}/${svc.knativeVersion}`,
       kind: 'Service',
@@ -142,6 +150,9 @@ class KnativeServing extends Component {
       },
       spec: {
         template: {
+          metadata: {
+            annotations
+          },
           spec: {
             containers: [
               imageConfig
