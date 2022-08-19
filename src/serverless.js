@@ -80,9 +80,13 @@ class KnativeServing extends Component {
 
   // "private" methods
   async getIstioIngressIp(k8s) {
-    const res = await k8s.readNamespacedService('istio-ingressgateway', 'istio-system')
-    if (res.body && res.body.status.loadBalancer && res.body.status.loadBalancer.ingress) {
-      return res.body.status.loadBalancer.ingress[0].ip
+    try {
+      const res = await k8s.readNamespacedService('istio-ingressgateway', 'istio-system')
+      if (res.body && res.body.status.loadBalancer && res.body.status.loadBalancer.ingress) {
+        return res.body.status.loadBalancer.ingress[0].ip
+      }
+    } catch (_err) {
+      // ignore istio errors to leverage usage of kourier
     }
   }
 
