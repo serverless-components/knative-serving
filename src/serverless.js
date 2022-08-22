@@ -1,21 +1,22 @@
+const path = require('path')
+const { isEmpty, mergeDeepRight } = require('ramda')
 const kubernetes = require('@kubernetes/client-node')
 const { Component } = require('@serverless/core')
 
 const defaults = {
+  kubeConfigPath: path.join(process.env.HOME, '.kube', 'config'),
   knativeGroup: 'serving.knative.dev',
-  knativeVersion: 'v1alpha1',
+  knativeVersion: 'v1',
   registryAddress: 'docker.io',
   namespace: 'default'
 }
 
 class KnativeServing extends Component {
-  async deploy(inputs = {}) {
-    const config = {
-      ...defaults,
-      ...inputs
-    }
+  async default(inputs = {}) {
+    const config = mergeDeepRight(defaults, inputs)
 
-    const k8sCustom = this.getKubernetesClient(kubernetes.CustomObjectsApi)
+    const k8sCore = this.getKubernetesClient(config.kubeConfigPath, kubernetes.CoreV1Api)
+    const k8sCustom = this.getKubernetesClient(config.kubeConfigPath, kubernetes.CustomObjectsApi)
 
     let serviceExists = true
     try {
@@ -36,18 +37,20 @@ class KnativeServing extends Component {
     const serviceUrl = await this.getServiceUrl(k8sCustom, config)
     config.serviceUrl = serviceUrl
 
+    const istioIngressIp = await this.getIstioIngressIp(k8sCore)
+    config.istioIngressIp = istioIngressIp
+
     this.state = config
     return this.state
   }
 
   async remove(inputs = {}) {
-    const config = {
-      ...defaults,
-      ...inputs,
-      ...this.state
+    let config = mergeDeepRight(defaults, inputs)
+    if (isEmpty(config)) {
+      config = this.state
     }
 
-    const k8sCustom = this.getKubernetesClient(kubernetes.CustomObjectsApi)
+    const k8sCustom = this.getKubernetesClient(config.kubeConfigPath, kubernetes.CustomObjectsApi)
 
     let params = Object.assign({}, config)
     const manifest = this.getManifest(params)
@@ -55,10 +58,38 @@ class KnativeServing extends Component {
     await this.deleteService(k8sCustom, params)
 
     this.state = {}
+    await this.save()
     return {}
   }
 
+  async info(inputs = {}) {
+    const config = mergeDeepRight(defaults, inputs)
+
+    const k8sCore = this.getKubernetesClient(config.kubeConfigPath, kubernetes.CoreV1Api)
+    const k8sCustom = this.getKubernetesClient(config.kubeConfigPath, kubernetes.CustomObjectsApi)
+    const serviceUrls = await this.getServiceUrls(k8sCustom, config)
+    config.serviceUrls = serviceUrls
+
+    const istioIngressIp = await this.getIstioIngressIp(k8sCore)
+    config.istioIngressIp = istioIngressIp
+
+    this.state = config
+    await this.save()
+    return this.state
+  }
+
   // "private" methods
+  async getIstioIngressIp(k8s) {
+    try {
+      const res = await k8s.readNamespacedService('istio-ingressgateway', 'istio-system')
+      if (res.body && res.body.status.loadBalancer && res.body.status.loadBalancer.ingress) {
+        return res.body.status.loadBalancer.ingress[0].ip
+      }
+    } catch (_err) {
+      // ignore istio errors to leverage usage of kourier
+    }
+  }
+
   async getServiceUrl(k8s, config) {
     let url
     do {
@@ -71,30 +102,27 @@ class KnativeServing extends Component {
     return url
   }
 
-  getKubernetesClient(type) {
-    const { endpoint, port } = this.credentials.kubernetes
-    const token = this.credentials.kubernetes.serviceAccountToken
-    const skipTLSVerify = this.credentials.kubernetes.skipTlsVerify == 'true'
-    const kc = new kubernetes.KubeConfig()
-    kc.loadFromOptions({
-      clusters: [
-        {
-          name: 'cluster',
-          skipTLSVerify,
-          server: `${endpoint}:${port}`
-        }
-      ],
-      users: [{ name: 'user', token }],
-      contexts: [
-        {
-          name: 'context',
-          user: 'user',
-          cluster: 'cluster'
-        }
-      ],
-      currentContext: 'context'
-    })
-    return kc.makeApiClient(type)
+  async getServiceUrls(k8s, config) {
+    let urls = new Map()
+    do {
+      const services = await this.listServices(k8s, config)
+      if (services.response.statusCode == 200 && services.body.items) {
+        services.body.items.forEach( s => {
+          const serviceName = s.metadata.name
+          const serviceUrl = s.status.url
+          urls.set(serviceName, serviceUrl)
+        })
+      }
+      await new Promise((resolve) => setTimeout(() => resolve(), 2000))
+    } while (!urls)
+    return urls
+  }
+
+  getKubernetesClient(configPath, type) {
+    let kc = new kubernetes.KubeConfig()
+    kc.loadFromFile(configPath)
+    kc = kc.makeApiClient(type)
+    return kc
   }
 
   getManifest(svc) {
@@ -109,6 +137,14 @@ class KnativeServing extends Component {
     if (svc.pullPolicy) {
       imageConfig.imagePullPolicy = svc.pullPolicy
     }
+
+    const annotations = {}
+    if (svc.autoscaler) {
+      for (const key in svc.autoscaler) {
+        const value = (typeof svc.autoscaler[key] == 'number') ? svc.autoscaler[key].toString() : svc.autoscaler[key]
+        annotations[`autoscaling.knative.dev/${key}`] = value
+      }
+    }
     return {
       apiVersion: `${svc.knativeGroup}/${svc.knativeVersion}`,
       kind: 'Service',
@@ -118,6 +154,9 @@ class KnativeServing extends Component {
       },
       spec: {
         template: {
+          metadata: {
+            annotations
+          },
           spec: {
             containers: [
               imageConfig
